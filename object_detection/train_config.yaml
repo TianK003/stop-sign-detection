@@ -1,0 +1,82 @@
+# Example: TRAIN the 256x256 champion, then quantize and evaluate it (chain_tqe).
+#   python stm32ai_main.py --config-name train_config
+# Swap operation_mode to chain_tqeb to also benchmark on the board afterwards,
+# or to training to stop after the float model. Outputs land in
+# tf/src/experiments_outputs/<timestamp>/ (saved_models/ + quantized_models/).
+
+general:
+  project_name: stop_sign_st_yololcv1_256
+  saved_models_dir: saved_models
+  display_figures: false
+  gpu_memory_limit: 6
+  num_threads_tflite: 8
+  global_seed: 127
+
+operation_mode: chain_tqe
+
+model:
+  # Fine-tuning starting point: ST's COCO-Person ST Yolo LC v1 checkpoint.
+  # Clone the stm32ai-modelzoo repo next to this one (see DATA.md). The net is
+  # fully convolutional, so the 192 pretrained weights transfer to a 256 input.
+  model_path: ../../stm32ai-modelzoo/object_detection/st_yololcv1/ST_pretrainedmodel_public_dataset/coco_2017_person/st_yololcv1_192/st_yololcv1_192.keras
+  model_type: st_yololcv1
+  input_shape: (256,256,3)
+
+dataset:
+  format: coco
+  dataset_name: coco
+  class_names: [stop_sign]
+  exclude_unlabeled: true
+  max_detections: 10
+  # Rebuild with scripts/extract_coco_stop_sign.py (images not shipped — DATA.md).
+  train_images_path: ./datasets/coco_stop_sign/train/data
+  train_annotations_path: ./datasets/coco_stop_sign/train/labels.json
+  val_images_path: ./datasets/coco_stop_sign/val/data
+  val_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+  test_images_path: ./datasets/coco_stop_sign/val/data
+  test_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+  quantization_path: ./datasets/coco_stop_sign/train/data
+  quantization_split: 0.10
+
+preprocessing:
+  rescaling: {scale: 1/255, offset: 0}
+  resizing: {aspect_ratio: fit, interpolation: nearest}
+  color_mode: rgb
+
+data_augmentation:
+  random_contrast: {factor: 0.4}
+  random_brightness: {factor: 0.3}
+  random_flip: {mode: horizontal}
+  random_translation: {width_factor: 0.10, height_factor: 0.10, fill_mode: reflect, interpolation: nearest}
+  random_rotation: {factor: 0.02, fill_mode: reflect, interpolation: nearest}
+
+training:
+  dropout: null
+  batch_size: 32
+  epochs: 200
+  optimizer: {Adam: {learning_rate: 0.001}}
+  callbacks:
+    LRWarmupCosineDecay: {initial_lr: 1.0e-05, warmup_steps: 10, max_lr: 0.0005, hold_steps: 20, decay_steps: 150, end_lr: 1.0e-06}
+    EarlyStopping: {monitor: val_loss, patience: 40, restore_best_weights: true, verbose: 1}
+
+postprocessing:
+  confidence_thresh: 0.001
+  NMS_thresh: 0.5
+  IoU_eval_thresh: 0.5
+  plot_metrics: true
+  max_detection_boxes: 10
+  # yolo_anchors omitted on purpose -> modelzoo defaults (do not use custom anchors here).
+
+quantization:
+  quantizer: TFlite_converter
+  quantization_type: PTQ
+  quantization_input_type: uint8
+  quantization_output_type: float
+  export_dir: quantized_models
+
+mlflow:
+  uri: ./tf/src/experiments_outputs/mlruns
+
+hydra:
+  run:
+    dir: ./tf/src/experiments_outputs/${now:%Y_%m_%d_%H_%M_%S}

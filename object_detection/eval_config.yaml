@@ -1,0 +1,48 @@
+# Example: EVALUATE an INT8 model on a labeled test set (operation_mode: evaluation).
+#   python stm32ai_main.py --config-name eval_config
+# Reports mAP@0.5 and writes precision/recall curves under the Hydra run dir.
+# Works on any .tflite (set model_path) or a float .keras. The field-test set used
+# in the thesis is withheld (privacy, DATA.md); this example evaluates on COCO val.
+
+general:
+  project_name: stop_sign_st_yololcv1_256_k2_eval
+  display_figures: false
+  gpu_memory_limit: 6
+  num_threads_tflite: 8
+  global_seed: 127
+
+operation_mode: evaluation
+
+model:
+  model_path: ../MODELS/256k2.tflite     # or ../MODELS/192k1.tflite (set input_shape to 192 to match)
+  model_type: st_yololcv1
+  input_shape: (256,256,3)
+
+dataset:
+  format: coco
+  dataset_name: coco
+  class_names: [stop_sign]
+  # Rebuild the COCO subset with scripts/extract_coco_stop_sign.py (images not shipped).
+  test_images_path: ./datasets/coco_stop_sign/val/data
+  test_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+
+preprocessing:
+  rescaling: {scale: 1/255, offset: 0}
+  resizing: {aspect_ratio: fit, interpolation: nearest}
+  color_mode: rgb
+
+postprocessing:
+  confidence_thresh: 0.001               # low threshold so mAP integrates the full PR curve
+  NMS_thresh: 0.5
+  IoU_eval_thresh: 0.5
+  plot_metrics: true
+  max_detection_boxes: 10
+  # Anchors the shipped 256 model was trained with (modelzoo defaults at parse_config.py:453).
+  yolo_anchors: [0.076023, 0.258508, 0.163031, 0.413531, 0.234769, 0.702585, 0.427054, 0.715892, 0.748154, 0.857092]
+
+mlflow:
+  uri: ./tf/src/experiments_outputs/mlruns
+
+hydra:
+  run:
+    dir: ./tf/src/experiments_outputs/eval_${now:%Y_%m_%d_%H_%M_%S}

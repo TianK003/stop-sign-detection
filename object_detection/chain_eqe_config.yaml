@@ -1,0 +1,58 @@
+# Example: chain_eqe — evaluate a FLOAT model, quantize it (PTQ int8), then
+# evaluate the int8 result, all without retraining (operation_mode: chain_eqe).
+#   python stm32ai_main.py --config-name chain_eqe_config
+# This is the PTQ-debugging workhorse: it reports the float->int8 mAP retention
+# for a given calibration split, so you can tune quantization without a full
+# train cycle. (chain_qd quantizes then deploys; chain_tqe(b) trains first.)
+
+general:
+  project_name: stop_sign_st_yololcv1_256_chain_eqe
+  display_figures: false
+  gpu_memory_limit: 6
+  num_threads_tflite: 8
+  global_seed: 127
+
+operation_mode: chain_eqe
+
+model:
+  # A float .keras checkpoint, e.g. the best_model.keras from a train_config run
+  # (tf/src/experiments_outputs/<timestamp>/saved_models/best_model.keras), or a
+  # head-rescaled variant produced by scripts/rescale_obj_logits.py --k 2.
+  model_path: ./tf/src/experiments_outputs/<your_run>/saved_models/best_model.keras
+  model_type: st_yololcv1
+  input_shape: (256,256,3)
+
+dataset:
+  format: coco
+  dataset_name: coco
+  class_names: [stop_sign]
+  test_images_path: ./datasets/coco_stop_sign/val/data
+  test_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+  quantization_path: ./datasets/coco_stop_sign/train/data
+  quantization_split: 0.05               # PTQ calibration fraction; raise to 0.10 if retention is poor
+
+preprocessing:
+  rescaling: {scale: 1/255, offset: 0}
+  resizing: {aspect_ratio: fit, interpolation: nearest}
+  color_mode: rgb
+
+postprocessing:
+  confidence_thresh: 0.001
+  NMS_thresh: 0.5
+  IoU_eval_thresh: 0.5
+  plot_metrics: true
+  max_detection_boxes: 10
+
+quantization:
+  quantizer: TFlite_converter
+  quantization_type: PTQ
+  quantization_input_type: uint8
+  quantization_output_type: float
+  export_dir: quantized_models
+
+mlflow:
+  uri: ./tf/src/experiments_outputs/mlruns
+
+hydra:
+  run:
+    dir: ./tf/src/experiments_outputs/${now:%Y_%m_%d_%H_%M_%S}

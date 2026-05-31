@@ -1,0 +1,111 @@
+# =============================================================================
+# config_template.yaml — annotated reference for every section the pipeline
+# understands. This is NOT meant to be run as-is; copy the blocks you need into
+# a task-specific config (see train_config.yaml / deploy_config.yaml /
+# eval_config.yaml / chain_eqe_config.yaml) and read CONFIGS.md for the workflow.
+#
+# Run any config from the object_detection/ directory with:
+#     python stm32ai_main.py --config-name <file_without_.yaml>
+# CLI overrides use Hydra syntax, e.g.:  training.epochs=50
+# =============================================================================
+
+general:
+  project_name: stop_sign_st_yololcv1     # free-text run label
+  saved_models_dir: saved_models          # subdir (under the Hydra run dir) for .keras outputs
+  display_figures: false                  # true pops matplotlib windows; keep false for headless
+  gpu_memory_limit: 6                      # GiB cap for TF GPU allocation
+  num_threads_tflite: 8                    # threads for the TFLite int8 interpreter (eval)
+  global_seed: 127                         # reproducibility
+
+# Which stage(s) to run. One of:
+#   training | evaluation | quantization | prediction | benchmarking | deployment
+#   chain_tqe  (train -> quantize -> evaluate)
+#   chain_tqeb (train -> quantize -> evaluate -> benchmark)
+#   chain_eqe  (evaluate float -> quantize -> evaluate int8)   # PTQ debugging, no retrain
+#   chain_qd   (quantize -> deploy)
+operation_mode: chain_tqe
+
+model:
+  # For training/chain_t*: a float .keras starting point (the pretrained checkpoint).
+  # For evaluation/deployment of an int8 model: a .tflite path.
+  model_path: ../../stm32ai-modelzoo/object_detection/st_yololcv1/ST_pretrainedmodel_public_dataset/coco_2017_person/st_yololcv1_192/st_yololcv1_192.keras
+  model_type: st_yololcv1
+  input_shape: (256,256,3)                 # 192 (compact) or 256 (champion); ST Yolo LC v1 is fully convolutional
+
+dataset:
+  format: coco
+  dataset_name: coco
+  class_names: [stop_sign]                 # single class; COCO category_id 13 is remapped to 0
+  exclude_unlabeled: true
+  max_detections: 10
+  # Rebuild these with scripts/extract_coco_stop_sign.py — images are NOT shipped (see DATA.md)
+  train_images_path: ./datasets/coco_stop_sign/train/data
+  train_annotations_path: ./datasets/coco_stop_sign/train/labels.json
+  val_images_path: ./datasets/coco_stop_sign/val/data
+  val_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+  test_images_path: ./datasets/coco_stop_sign/val/data
+  test_annotations_path: ./datasets/coco_stop_sign/val/labels.json
+  quantization_path: ./datasets/coco_stop_sign/train/data
+  quantization_split: 0.10                 # fraction of train used as PTQ calibration set
+
+preprocessing:
+  rescaling: {scale: 1/255, offset: 0}
+  resizing: {aspect_ratio: fit, interpolation: nearest}
+  color_mode: rgb
+
+data_augmentation:                         # training only
+  random_contrast: {factor: 0.4}
+  random_brightness: {factor: 0.3}
+  random_flip: {mode: horizontal}          # OK here: the octagon is near-symmetric, box position is all that matters
+  random_translation: {width_factor: 0.10, height_factor: 0.10, fill_mode: reflect, interpolation: nearest}
+  random_rotation: {factor: 0.02, fill_mode: reflect, interpolation: nearest}
+  # NOTE: keep aggressive crop/zoom OFF — it destroys the small, distant signs.
+
+training:
+  dropout: null
+  batch_size: 32
+  epochs: 200
+  optimizer: {Adam: {learning_rate: 0.001}}
+  callbacks:
+    LRWarmupCosineDecay: {initial_lr: 1.0e-05, warmup_steps: 10, max_lr: 0.0005, hold_steps: 20, decay_steps: 150, end_lr: 1.0e-06}
+    EarlyStopping: {monitor: val_loss, patience: 40, restore_best_weights: true, verbose: 1}
+    # Tip: monitor val_map (mode: max) when float val_loss and val_map decouple.
+
+postprocessing:
+  confidence_thresh: 0.001                 # use ~0.001 for mAP eval; ~0.5 for a live demo
+  NMS_thresh: 0.5
+  IoU_eval_thresh: 0.5
+  plot_metrics: true
+  max_detection_boxes: 10
+  # Omit yolo_anchors to fall through to the modelzoo defaults (parse_config.py:449-453).
+  # NEVER substitute custom k-means anchors when fine-tuning a pretrained head — it poisons int8 PTQ.
+
+quantization:
+  quantizer: TFlite_converter
+  quantization_type: PTQ
+  quantization_input_type: uint8           # MUST be uint8 for the H7 app; int8 compiles but feeds garbage pixels
+  quantization_output_type: float
+  export_dir: quantized_models
+
+tools:                                     # required for benchmarking / deployment
+  stedgeai:
+    optimization: balanced
+    on_cloud: False                        # True uses the ST Edge AI Developer Cloud instead of a local install
+    path_to_stedgeai: C:/ST/STEdgeAI/4.0/Utilities/windows/stedgeai.exe
+  path_to_cubeIDE: C:/ST/STM32CubeIDE_1.17.0/STM32CubeIDE/stm32cubeide.exe
+
+benchmarking:
+  board: STM32H747I-DISCO
+
+deployment:
+  c_project_path: ../application_code/object_detection/STM32H7/
+  IDE: GCC
+  verbosity: 1
+  hardware_setup: {serie: STM32H7, board: STM32H747I-DISCO}
+
+mlflow:
+  uri: ./tf/src/experiments_outputs/mlruns
+
+hydra:
+  run:
+    dir: ./tf/src/experiments_outputs/${now:%Y_%m_%d_%H_%M_%S}
