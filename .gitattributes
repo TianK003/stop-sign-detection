@@ -1,0 +1,15 @@
+# Keep binary files byte-exact so core.autocrlf cannot rewrite LF -> CRLF
+# (which corrupts e.g. uncompressed PDFs and model blobs).
+*.pdf    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.gif    binary
+*.eps    binary
+*.gz     binary
+*.zip    binary
+*.tflite binary
+*.h5     binary
+*.keras  binary
+*.ttf    binary
+*.otf    binary
