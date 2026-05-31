@@ -61,4 +61,4 @@ These are INT8 derivatives fine-tuned from STMicroelectronics' publicly released
 COCO-Person `st_yololcv1` checkpoint. They inherit the upstream model's license terms
 (STMicroelectronics SLA / "Ultimate Liberty"); see the license files preserved under
 `object_detection/` and `application_code/`. The fine-tuned weights themselves are
-© Tian Ključanin and provided for academic reproducibility of the thesis results.
+provided for academic reproducibility of the thesis results.

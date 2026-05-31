@@ -1,6 +1,6 @@
 # STM32H7 stop-sign detection — bachelor's thesis code release
 
-Public code companion to the FRI UL bachelor's thesis by **Tian Ključanin**:
+Public code companion to a FRI UL bachelor's thesis:
 *fine-tuning ST Yolo LC v1 (INT8) on a single-class "stop sign" subset of COCO 2017,
 deployed to an STM32H747I-DISCO + B-CAMS-OMV for live detection of real Slovenian STOP
 signs.* It contains the training/quantization/evaluation pipeline, the STM32H7 application
@@ -22,7 +22,7 @@ license for the `application_code/.../STM32H7/` tree and its middleware/BSP comp
 Every upstream `LICENSE.md` / `LICENSE.txt` is preserved in place. The top-level
 [`LICENSE.md`](LICENSE.md) is the upstream license bill-of-materials.
 
-**Thesis-specific additions © Tian Ključanin:**
+**Thesis-specific additions (not part of the upstream ST modelzoo):**
 
 - `scripts/` — dataset extraction, PTQ diagnostics, obj-logit rescale, anchor clustering,
   field-attribute analysis, threshold sweep, plotting.
@@ -49,7 +49,6 @@ Slovenian street photos.
 |---|---|
 | Discovery board | **STM32H747I-DISCO** (dual-core Cortex-M7 + M4, 2 MiB Flash, 1 MiB SRAM, 512 KiB AXI-SRAM, LTDC, DCMI, SDRAM) |
 | Camera | **B-CAMS-OMV** bundle |
-| Power for field work | USB-C powerbank into the board's CN2 (ST-Link USB-C) |
 
 **Tool stack.**
 
@@ -213,12 +212,6 @@ the compact alternative); run `python stm32ai_main.py --config-name deploy_confi
 > `quantization_input_type` must be `uint8` for the H7 app. Setting `int8` compiles but
 > the H7 image path delivers uint8 pixels, so inference receives garbage. The most
 > expensive footgun in the OD path.
-
-> [!CAUTION]
-> Never use custom k-means anchors when fine-tuning from a pretrained checkpoint. The
-> pretrained output layer is calibrated for specific anchors; replacing them causes
-> unbounded logit drift that poisons int8 PTQ (87 % → 5–18 % retention). Stick with the
-> modelzoo defaults parsed at `object_detection/tf/src/utils/parse_config.py:449-453`.
 
 > [!NOTE]
 > Windows long-path limit (256 chars) can break MLflow logging deep inside Hydra output
